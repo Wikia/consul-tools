@@ -1,12 +1,12 @@
-from optparse import OptionParser
+import argparse
 import requests
 import json
 import time
 import sys
+import consul
 
-def get_checks(url):
-    response = requests.get(url)
-    nodes = [node for node in response.json()]
+def get_checks(consul_client, service):
+    index, nodes = consul_client.health.service(service)
     check_blocks = [node['Checks'] for node in nodes]
     checks = [check for sublist in check_blocks for check in sublist]
     return [check for check in checks if check['CheckID'] != "serfHealth"]
@@ -21,28 +21,28 @@ def print_node(message, node):
 if __name__ == '__main__':
     usage = """usage: %prog [options]
         """
-    parser = OptionParser(usage)
-    parser.add_option("-H", "--consul-host", dest="consul_host", \
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-H", "--consul-host", dest="consul_host", \
             help="consul host to connect to")
-    parser.add_option("-s", "--service", dest="service", help="service to query")
-    parser.add_option("-P", "--no-passing", dest="passing", default=True, \
+    parser.add_argument("-s", "--service", dest="service", help="service to query")
+    parser.add_argument("-P", "--no-passing", dest="passing", default=True, \
             action="store_false", help="don't show passing services")
-    parser.add_option("-F", "--no-failed", dest="failed", default=True, \
+    parser.add_argument("-F", "--no-failed", dest="failed", default=True, \
             action="store_false", help="don't show failed services")
 
-    (options, args) = parser.parse_args()
+    options = parser.parse_args()
 
     if options.consul_host and options.service:
-        health_url = "http://{0}:8500/v1/health/service/{1}".format(options.consul_host, options.service)
+        consul_client = consul.Consul(options.consul_host)
     else:
         parser.error("-H and -s are required")
 
-    print "Querying {0}...".format(health_url)
+    print "Querying {0}...".format(options.consul_host)
     time.sleep(1)
 
 
     while True:
-        checks = get_checks(health_url)
+        checks = get_checks(consul_client, options.service)
         failing = filter_checks_by_status(checks, "critical")
         passing = filter_checks_by_status(checks, "passing")
 
